@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'olsera' => [
+        'api_url' => env('OLSERA_API_URL', 'https://api.olsera.com'),
+        'access_token' => env('OLSERA_ACCESS_TOKEN'),
+        'store_id' => env('OLSERA_STORE_ID'),
+    ],
+
+    'woocommerce' => [
+        'store_url' => env('WC_STORE_URL'),
+        'consumer_key' => env('WC_CONSUMER_KEY'),
+        'consumer_secret' => env('WC_CONSUMER_SECRET'),
+    ],
+
 ];
