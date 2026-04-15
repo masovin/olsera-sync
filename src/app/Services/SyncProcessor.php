@@ -41,7 +41,7 @@ class SyncProcessor
                     ['olsera_id' => $olseraProduct['id']],
                     [
                         'sku' => $olseraProduct['sku'] ?? null,
-                        'brand' => $olseraProduct['klasifikasi'] ?? null,
+                        'brand' => ucwords(strtolower($olseraProduct['klasifikasi'])) ?? null,
                         'name' => $olseraProduct['name'],
                         'barcode' => $olseraProduct['barcode'] ?? null,
                         'price' => $olseraProduct['selling_price'] ?? $olseraProduct['price'] ?? 0,
@@ -161,38 +161,54 @@ class SyncProcessor
             $failed = 0;
 
             foreach ($pendingProducts as $product) {
+                $isVariable = $product->has_variants;
+                $attributeSlug = $this->determineAttributeSlug($product);
+                
                 // 1. Map data
-                $wooData = $this->mapProductToWoo($product);
+                $wooData = $this->mapProductToWoo($product, $isVariable, $attributeSlug);
 
                 // 2. Check for existing mapping
                 $mapping = SyncMapping::where('olsera_id', $product->olsera_id)->first();
-                
+                $wooId = null;
+
                 if ($mapping) {
                     // Update existing
                     $response = $this->woo->updateProduct($mapping->woocommerce_id, $wooData);
+                    if (!empty($response['id'])) {
+                        $wooId = $response['id'];
+                    }
                 } else {
                     // Try to find by SKU first to avoid duplicates
                     $existingWoo = $product->sku ? $this->woo->findProductBySku($product->sku) : null;
                     
                     if ($existingWoo) {
                         $response = $this->woo->updateProduct($existingWoo['id'], $wooData);
-                        SyncMapping::create([
-                            'olsera_id' => $product->olsera_id,
-                            'woocommerce_id' => $existingWoo['id']
-                        ]);
+                        if (!empty($response['id'])) {
+                            $wooId = $response['id'];
+                            SyncMapping::create([
+                                'olsera_id' => $product->olsera_id,
+                                'woocommerce_id' => $wooId
+                            ]);
+                        }
                     } else {
                         // Create new
                         $response = $this->woo->createProduct($wooData);
                         if (!empty($response['id'])) {
+                            $wooId = $response['id'];
                             SyncMapping::create([
                                 'olsera_id' => $product->olsera_id,
-                                'woocommerce_id' => $response['id']
+                                'woocommerce_id' => $wooId
                             ]);
                         }
                     }
                 }
 
-                if (!empty($response) && isset($response['id'])) {
+                if ($wooId) {
+                    // 3. Process Variations if applicable
+                    if ($isVariable) {
+                        $this->syncVariations($product, $wooId, $attributeSlug);
+                    }
+                    
                     $product->update(['is_synced' => true]);
                     $synced++;
                 } else {
@@ -213,17 +229,42 @@ class SyncProcessor
     /**
      * Map internal product model to WooCommerce API format.
      */
-    protected function mapProductToWoo(Product $product): array
+    protected function mapProductToWoo(Product $product, bool $isVariable = false, string $attributeSlug = 'pa_size'): array
     {
+        $categoryId = ($attributeSlug === 'pa_size') ? 23 : 80;
+
         $data = [
             'name' => $product->name,
-            'type' => 'simple',
+            'type' => $isVariable ? 'variable' : 'simple',
             'regular_price' => (string) $product->price,
             'description' => $product->description,
             'sku' => $product->sku,
-            'manage_stock' => true,
-            'stock_quantity' => $product->stock,
+            'manage_stock' => !$isVariable,
+            'categories' => [
+                ['id' => $categoryId]
+            ]
         ];
+
+        if ($isVariable) {
+            // Define the attributes for the variable product
+            $variants = $product->variants;
+            $options = $variants->pluck('name')->unique()->toArray();
+            
+            $data['attributes'] = [
+                [
+                    'id' => $attributeSlug == 'pa_size' ? 2 : 4,
+                    'visible' => true,
+                    'variation' => true,
+                    'options' => array_values($options),
+                ]
+            ];
+            
+            unset($data['regular_price']);
+            $data['stock_quantity'] = 0;
+            $data['manage_stock'] = false;
+        } else {
+            $data['stock_quantity'] = $product->stock;
+        }
 
         if (!empty($product->images) && is_array($product->images)) {
             $data['images'] = array_map(function($img) {
@@ -232,6 +273,75 @@ class SyncProcessor
         }
 
         return $data;
+    }
+
+    /**
+     * Map internal variant model to WooCommerce variation API format.
+     */
+    protected function mapVariantToWoo($variant, string $attributeSlug = 'pa_size'): array
+    {
+        $data = [
+            'regular_price' => (string) ($variant->price ?: $variant->sell_price ?: 0),
+            'sku' => $variant->sku,
+            'manage_stock' => true,
+            'stock_quantity' => $variant->stock,
+            'attributes' => [
+                [
+                    'id' => $attributeSlug == 'pa_size' ? 2 : 4,
+                    'option' => $variant->name,
+                ]
+            ],
+        ];
+
+        if (!empty($variant->images) && is_array($variant->images)) {
+            $data['image'] = ['src' => is_array($variant->images[0]) ? ($variant->images[0]['url'] ?? $variant->images[0]['src'] ?? '') : $variant->images[0]];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Determine whether to use Size or Apparel Size.
+     */
+    protected function determineAttributeSlug(Product $product): string
+    {
+        $variants = $product->variants;
+        if ($variants->isEmpty()) {
+            return 'pa_size';
+        }
+
+        foreach ($variants as $variant) {
+            if (is_numeric($variant->name) || preg_match('/^\d+(\.\d+)?$/', $variant->name)) {
+                return 'pa_size';
+            }
+        }
+
+        return 'pa_size-apparel';
+    }
+
+    /**
+     * Helper to synchronize variations for a variable product.
+     */
+    protected function syncVariations(Product $product, int $wooParentId, string $attributeSlug = 'pa_size'): void
+    {
+        foreach ($product->variants as $variant) {
+            $variantData = $this->mapVariantToWoo($variant, $attributeSlug);
+            
+            // Check mapping for variation
+            $mapping = SyncMapping::where('olsera_id', $variant->olsera_id)->first();
+            
+            if ($mapping) {
+                $this->woo->updateProductVariation($wooParentId, $mapping->woocommerce_id, $variantData);
+            } else {
+                $response = $this->woo->createProductVariation($wooParentId, $variantData);
+                if (!empty($response['id'])) {
+                    SyncMapping::create([
+                        'olsera_id' => $variant->olsera_id,
+                        'woocommerce_id' => $response['id']
+                    ]);
+                }
+            }
+        }
     }
 
     /**

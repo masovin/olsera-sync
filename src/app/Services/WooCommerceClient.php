@@ -39,7 +39,7 @@ class WooCommerceClient
      */
     public function findProductBySku(string $sku): ?array
     {
-        $response = $this->request('GET', '/products', ['sku' => $sku]);
+        $response = $this->request('GET', '/products', ['sku' => $sku, 'consumer_key' => $this->consumerKey, 'consumer_secret' => $this->consumerSecret]);
         return (!empty($response) && is_array($response)) ? $response[0] : null;
     }
 
@@ -55,21 +55,68 @@ class WooCommerceClient
     }
 
     /**
+     * List all variations for a specific product.
+     */
+    public function getProductVariations(int $productId): array
+    {
+        return $this->request('GET', "/products/{$productId}/variations");
+    }
+
+    /**
+     * Create a new product variation.
+     */
+    public function createProductVariation(int $productId, array $data): array
+    {
+        return $this->request('POST', "/products/{$productId}/variations", $data);
+    }
+
+    /**
+     * Update an existing product variation.
+     */
+    public function updateProductVariation(int $productId, int $variationId, array $data): array
+    {
+        return $this->request('PUT', "/products/{$productId}/variations/{$variationId}", $data);
+    }
+
+    /**
+     * Batch update variations for a specific product.
+     */
+    public function batchUpdateVariations(int $productId, array $data): array
+    {
+        return $this->request('POST', "/products/{$productId}/variations/batch", $data);
+    }
+
+    /**
      * Generic request handler for WooCommerce API.
      */
-    protected function request(string $method, string $endpoint, array $data = []): array
+    public function request(string $method, string $endpoint, array $data = []): array
     {
         $url = $this->storeUrl . '/wp-json/wc/v3' . $endpoint;
 
-        $response = Http::withBasicAuth($this->consumerKey, $this->consumerSecret)
-            ->withHeaders(['Accept' => 'application/json'])
+        // Force consumer_key and consumer_secret into query params for higher compatibility
+        $query = $method === 'GET' ? $data : [];
+        $query['consumer_key'] = $this->consumerKey;
+        $query['consumer_secret'] = $this->consumerSecret;
+
+        $response = Http::timeout(60)
+            ->connectTimeout(30)
+            ->withUserAgent('WooCommerce API Client')
+            ->retry(3, 100, function ($exception, $request) {
+                return $exception instanceof \Illuminate\Http\Client\ConnectionException 
+                    || ($exception instanceof \Illuminate\Http\Client\ResponseException && in_array($exception->getCode(), [429, 503]));
+            })
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
             ->send($method, $url, [
-                'query' => $method === 'GET' ? $data : [],
+                'query' => $query,
                 'json' => $method !== 'GET' ? $data : [],
             ]);
 
         if ($response->failed()) {
-            Log::error("WooCommerce API Error ({$endpoint}): " . $response->body());
+            $excerpt = substr($response->body(), 0, 500);
+            Log::error("WooCommerce API Error ({$endpoint}) [Status: {$response->status()}]: {$excerpt}");
             return [];
         }
 
