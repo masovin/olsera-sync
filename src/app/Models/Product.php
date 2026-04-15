@@ -14,12 +14,23 @@ class Product extends Model
         'price',
         'stock',
         'images',
+        'has_variants',
         'is_synced',
+        'brand'
     ];
 
     protected $casts = [
         'images' => 'array',
+        'has_variants' => 'boolean',
         'is_synced' => 'boolean',
         'price' => 'decimal:2',
     ];
+
+    /**
+     * Get the variations for the product.
+     */
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
 }

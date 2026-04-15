@@ -36,11 +36,12 @@ class SyncProcessor
 
             $count = 0;
             foreach ($products as $olseraProduct) {
-                // Determine if record exists
+                // 1. Update or Create Parent Product
                 $localProduct = Product::updateOrCreate(
                     ['olsera_id' => $olseraProduct['id']],
                     [
                         'sku' => $olseraProduct['sku'] ?? null,
+                        'brand' => $olseraProduct['klasifikasi'] ?? null,
                         'name' => $olseraProduct['name'],
                         'barcode' => $olseraProduct['barcode'] ?? null,
                         'price' => $olseraProduct['selling_price'] ?? $olseraProduct['price'] ?? 0,
@@ -48,19 +49,39 @@ class SyncProcessor
                         'weight' => $olseraProduct['weight'] ?? 0,
                         'stock' => $olseraProduct['stock_quantity'] ?? $olseraProduct['stock'] ?? 0,
                         'description' => $olseraProduct['description'] ?? '',
-                        'images' => $olseraProduct['images'] ?? [],
-                        'is_variant' => (bool) ($olseraProduct['is_variant'] ?? false),
+                        'images' => $olseraProduct['photo_md'] ?? [],
+                        'has_variants' => (bool) ($olseraProduct['has_variant'] ?? false),
                         'allow_decimal' => (bool) ($olseraProduct['allow_decimal'] ?? false),
-                        'is_synced' => false, // Mark for syncing to WooCommerce
+                        'is_synced' => false,
                     ]
                 );
+
+                // 2. Process Variants if available
+                if (!empty($olseraProduct['variants'])) {
+                    foreach ($olseraProduct['variants'] as $olseraVariant) {
+                        $localProduct->variants()->updateOrCreate(
+                            ['olsera_id' => $olseraVariant['id']],
+                            [
+                                'sku' => $olseraVariant['sku'] ?? null,
+                                'name' => $olseraVariant['name'],
+                                'price' => $olseraVariant['sell_price'] ?? 0,
+                                'sell_price' => $olseraVariant['sell_price'] ?? null,
+                                'buy_price' => $olseraVariant['buy_price'] ?? 0,
+                                'weight' => $olseraVariant['vweight'] ?? 0,
+                                'stock' => $olseraVariant['stock_qty'] ?? 0,
+                                'barcode' => $olseraVariant['variant_barcode'] ?? null,
+                                'images' => !empty($olseraVariant['photo_md']) ? [$olseraVariant['photo_md']] : null,
+                            ]
+                        );
+                    }
+                }
                 
                 if ($localProduct->wasRecentlyCreated || $localProduct->wasChanged()) {
                     $count++;
                 }
             }
 
-            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$count} products from Olsera Open API.");
+            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$count} products (and their variants) from Olsera Open API.");
             return ['count' => $count];
 
         } catch (\Exception $e) {
@@ -76,7 +97,6 @@ class SyncProcessor
     public function ingestInventory(): array
     {
         try {
-            // Reusing getProducts for simplicity as Open API v1 includes stock_quantity in the list
             $response = $this->olsera->getProducts();
             $products = $response['data'] ?? [];
 
@@ -86,9 +106,8 @@ class SyncProcessor
 
             $count = 0;
             foreach ($products as $item) {
-                $product = Product::where('olsera_id', $item['id'])
-                    ->orWhere('sku', $item['sku'] ?? null)
-                    ->first();
+                // Update parent stock
+                $product = Product::where('olsera_id', $item['id'])->first();
 
                 if ($product) {
                     $newStock = $item['stock_quantity'] ?? $item['stock'] ?? 0;
@@ -99,10 +118,25 @@ class SyncProcessor
                         ]);
                         $count++;
                     }
+
+                    // Update variant stock
+                    if (!empty($item['variants'])) {
+                        foreach ($item['variants'] as $variantItem) {
+                            $variant = $product->variants()->where('olsera_id', $variantItem['id'])->first();
+                            if ($variant) {
+                                $newVarStock = $variantItem['stock_qty'] ?? 0;
+                                if ($variant->stock != $newVarStock) {
+                                    $variant->update(['stock' => $newVarStock]);
+                                    // Optionally mark parent as unsynced if ANY variant changed
+                                    $product->update(['is_synced' => false]);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            $this->logSync('olsera_inventory', 'success', "Updated stock for {$count} products from Olsera Open API.");
+            $this->logSync('olsera_inventory', 'success', "Updated stock for {$count} products and their variants from Olsera Open API.");
             return ['count' => $count];
         } catch (\Exception $e) {
             $this->logSync('olsera_inventory', 'error', $e->getMessage());
