@@ -9,10 +9,10 @@ use Illuminate\Support\Facades\Log;
 
 class SyncProcessor
 {
-    protected OlseraClient $olsera;
+    protected OlseraOpenClient $olsera;
     protected WooCommerceClient $woo;
 
-    public function __construct(OlseraClient $olsera, WooCommerceClient $woo)
+    public function __construct(OlseraOpenClient $olsera, WooCommerceClient $woo)
     {
         $this->olsera = $olsera;
         $this->woo = $woo;
@@ -26,8 +26,8 @@ class SyncProcessor
         try {
             $response = $this->olsera->getProducts();
             
-            // Assuming Olsera response structure has a 'data' key with array of products
-            $products = $response['data'] ?? $response ?? [];
+            // Olsera Open API response structure has a 'data' key with array of products
+            $products = $response['data'] ?? [];
             
             if (empty($products)) {
                 $this->logSync('olsera_ingest', 'success', 'No products found to ingest.');
@@ -42,10 +42,15 @@ class SyncProcessor
                     [
                         'sku' => $olseraProduct['sku'] ?? null,
                         'name' => $olseraProduct['name'],
-                        'price' => $olseraProduct['price'] ?? 0,
-                        'stock' => $olseraProduct['inventory'] ?? $olseraProduct['stock'] ?? 0,
+                        'barcode' => $olseraProduct['barcode'] ?? null,
+                        'price' => $olseraProduct['selling_price'] ?? $olseraProduct['price'] ?? 0,
+                        'buy_price' => $olseraProduct['buy_price'] ?? 0,
+                        'weight' => $olseraProduct['weight'] ?? 0,
+                        'stock' => $olseraProduct['stock_quantity'] ?? $olseraProduct['stock'] ?? 0,
                         'description' => $olseraProduct['description'] ?? '',
                         'images' => $olseraProduct['images'] ?? [],
+                        'is_variant' => (bool) ($olseraProduct['is_variant'] ?? false),
+                        'allow_decimal' => (bool) ($olseraProduct['allow_decimal'] ?? false),
                         'is_synced' => false, // Mark for syncing to WooCommerce
                     ]
                 );
@@ -55,7 +60,7 @@ class SyncProcessor
                 }
             }
 
-            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$count} products from Olsera.");
+            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$count} products from Olsera Open API.");
             return ['count' => $count];
 
         } catch (\Exception $e) {
@@ -66,26 +71,27 @@ class SyncProcessor
 
     /**
      * Stage 1b: Fetch only stock from Olsera.
+     * Note: Open API v1 uses the same product endpoint for stock updates if no dedicated endpoint exists.
      */
     public function ingestInventory(): array
     {
         try {
-            $response = $this->olsera->getStock();
-            $stockData = $response['data'] ?? $response ?? [];
+            // Reusing getProducts for simplicity as Open API v1 includes stock_quantity in the list
+            $response = $this->olsera->getProducts();
+            $products = $response['data'] ?? [];
 
-            if (empty($stockData)) {
+            if (empty($products)) {
                 return ['count' => 0];
             }
 
             $count = 0;
-            foreach ($stockData as $item) {
-                // Match by olsera_id or sku
+            foreach ($products as $item) {
                 $product = Product::where('olsera_id', $item['id'])
                     ->orWhere('sku', $item['sku'] ?? null)
                     ->first();
 
                 if ($product) {
-                    $newStock = $item['inventory'] ?? $item['stock'] ?? 0;
+                    $newStock = $item['stock_quantity'] ?? $item['stock'] ?? 0;
                     if ($product->stock != $newStock) {
                         $product->update([
                             'stock' => $newStock,
@@ -96,7 +102,7 @@ class SyncProcessor
                 }
             }
 
-            $this->logSync('olsera_inventory', 'success', "Updated stock for {$count} products from Olsera.");
+            $this->logSync('olsera_inventory', 'success', "Updated stock for {$count} products from Olsera Open API.");
             return ['count' => $count];
         } catch (\Exception $e) {
             $this->logSync('olsera_inventory', 'error', $e->getMessage());

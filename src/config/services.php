@@ -41,6 +41,12 @@ return [
         'store_id' => env('OLSERA_STORE_ID'),
     ],
 
+    'olsera_open' => [
+        'base_url' => env('OLSERA_OPEN_API_URL', 'https://api-open.olsera.co.id/api/open-api/v1'),
+        'app_id' => env('OLSERA_OPEN_APP_ID'),
+        'secret_key' => env('OLSERA_OPEN_SECRET_KEY'),
+    ],
+
     'woocommerce' => [
         'store_url' => env('WC_STORE_URL'),
         'consumer_key' => env('WC_CONSUMER_KEY'),

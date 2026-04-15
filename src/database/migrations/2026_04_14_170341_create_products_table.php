@@ -17,9 +17,14 @@ return new class extends Migration
             $table->string('sku')->index()->nullable();
             $table->string('name');
             $table->text('description')->nullable();
+            $table->string('barcode')->nullable()->index();
             $table->decimal('price', 12, 2)->default(0);
+            $table->decimal('buy_price', 12, 2)->default(0);
+            $table->decimal('weight', 10, 2)->default(0);
             $table->integer('stock')->default(0);
             $table->json('images')->nullable();
+            $table->boolean('is_variant')->default(false);
+            $table->boolean('allow_decimal')->default(false);
             $table->boolean('is_synced')->default(false);
             $table->timestamps();
         });
