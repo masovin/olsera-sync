@@ -50,7 +50,7 @@ class SyncProcessor
                         'weight' => $olseraProduct['weight'] ?? 0,
                         'stock' => $olseraProduct['stock_quantity'] ?? $olseraProduct['stock'] ?? 0,
                         'description' => $olseraProduct['description'] ?? '',
-                        'images' => array_values(array_unique(array_filter([$olseraProduct['photo_md'] ?? null, $olseraProduct['photo'] ?? null]))),
+                        'images' => $olseraProduct['photo_md'] ?? [],
                         'has_variants' => (bool) ($olseraProduct['has_variant'] ?? false),
                         'allow_decimal' => (bool) ($olseraProduct['allow_decimal'] ?? false),
                         'is_synced' => false,
@@ -71,7 +71,7 @@ class SyncProcessor
                                 'weight' => $olseraVariant['vweight'] ?? 0,
                                 'stock' => $olseraVariant['stock_qty'] ?? 0,
                                 'barcode' => $olseraVariant['variant_barcode'] ?? null,
-                                'images' => array_values(array_unique(array_filter([$olseraVariant['photo_md'] ?? null, $olseraVariant['photo'] ?? null]))),
+                                'images' => !empty($olseraVariant['photo_md']) ? [$olseraVariant['photo_md']] : null,
                             ]
                         );
                     }
@@ -268,10 +268,9 @@ class SyncProcessor
         }
 
         if (!empty($product->images) && is_array($product->images)) {
-            $images = array_filter($product->images);
-            if (!empty($images)) {
-                $data['images'] = array_map(fn($url) => ['src' => $url], array_values($images));
-            }
+            $data['images'] = array_map(function($img) {
+                return ['src' => is_array($img) ? ($img['url'] ?? $img['src'] ?? '') : $img];
+            }, $product->images);
         }
 
         // Resolve Brand ID from name
@@ -310,10 +309,7 @@ class SyncProcessor
         ];
 
         if (!empty($variant->images) && is_array($variant->images)) {
-            $images = array_filter($variant->images);
-            if (!empty($images)) {
-                $data['image'] = ['src' => reset($images)];
-            }
+            $data['image'] = ['src' => is_array($variant->images[0]) ? ($variant->images[0]['url'] ?? $variant->images[0]['src'] ?? '') : $variant->images[0]];
         }
 
         return $data;
