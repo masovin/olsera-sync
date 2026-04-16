@@ -21,21 +21,26 @@ class SyncProcessor
     /**
      * Stage 1: Fetch from Olsera and store in local database.
      */
-    public function ingest(): array
+    public function ingest(int $page = 1, int $limit = 15): array
     {
         try {
-            $response = $this->olsera->getProducts();
+            $response = $this->olsera->getProducts([
+                'page' => $page,
+                'limit' => $limit
+            ]);
             
             // Olsera Open API response structure has a 'data' key with array of products
             $products = $response['data'] ?? [];
+            $resultCount = count($products);
             
             if (empty($products)) {
-                $this->logSync('olsera_ingest', 'success', 'No products found to ingest.');
-                return ['count' => 0];
+                $this->logSync('olsera_ingest', 'success', "No products found on page {$page}.");
+                return ['count' => 0, 'processed' => 0, 'has_more' => false];
             }
 
             $count = 0;
             foreach ($products as $olseraProduct) {
+                // ... (rest of the logic remains the same)
                 // 1. Update or Create Parent Product
                 $localProduct = Product::updateOrCreate(
                     ['olsera_id' => $olseraProduct['id']],
@@ -88,8 +93,13 @@ class SyncProcessor
                 }
             }
 
-            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$count} products (and their variants) from Olsera Open API.");
-            return ['count' => $count];
+            $this->logSync('olsera_ingest', 'success', "Successfully ingested {$resultCount} items (page {$page}) from Olsera Open API.");
+            
+            return [
+                'count' => $resultCount,
+                'processed' => $count,
+                'has_more' => $resultCount > 0
+            ];
 
         } catch (\Exception $e) {
             $this->logSync('olsera_ingest', 'error', $e->getMessage());
@@ -154,14 +164,15 @@ class SyncProcessor
     /**
      * Stage 2: Sync local products to WooCommerce.
      */
-    public function dispatch(): array
+    public function dispatch(int $limit = 20): array
     {
         try {
-            $pendingProducts = Product::where('is_synced', false)->get();
+            $pendingProducts = Product::where('is_synced', false)->limit($limit)->get();
+            $totalUnsynced = Product::where('is_synced', false)->count();
             
             if ($pendingProducts->isEmpty()) {
                 $this->logSync('woo_dispatch', 'success', 'No pending products to sync to WooCommerce.');
-                return ['synced' => 0, 'failed' => 0];
+                return ['synced' => 0, 'failed' => 0, 'remaining' => 0];
             }
 
             $synced = 0;
@@ -230,8 +241,14 @@ class SyncProcessor
                 }
             }
 
-            $this->logSync('woo_dispatch', 'success', "Sync complete. Synced: {$synced}, Failed: {$failed}");
-            return ['synced' => $synced, 'failed' => $failed];
+            $remaining = $totalUnsynced - $synced;
+            $this->logSync('woo_dispatch', 'success', "Batch sync complete. Synced: {$synced}, Remaining: {$remaining}");
+            
+            return [
+                'synced' => $synced,
+                'failed' => $failed,
+                'remaining' => $remaining > 0 ? $remaining : 0
+            ];
 
         } catch (\Exception $e) {
             $this->logSync('woo_dispatch', 'error', $e->getMessage());
