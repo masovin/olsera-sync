@@ -49,7 +49,7 @@ class SyncProcessor
                         'brand' => !empty($olseraProduct['klasifikasi']) ? ucwords(strtolower(trim($olseraProduct['klasifikasi']))) : null,
                         'name' => $olseraProduct['name'],
                         'barcode' => $olseraProduct['barcode'] ?? null,
-                        'price' => $olseraProduct['selling_price'] ?? $olseraProduct['price'] ?? 0,
+                        'price' => $olseraProduct['market_price'] ?? $olseraProduct['sell_price'] ?? 0,
                         'buy_price' => $olseraProduct['buy_price'] ?? 0,
                         'weight' => $olseraProduct['weight'] ?? 0,
                         'stock' => $olseraProduct['stock_quantity'] ?? $olseraProduct['stock'] ?? 0,
@@ -73,7 +73,7 @@ class SyncProcessor
                             [
                                 'sku' => $olseraVariant['sku'] ?? null,
                                 'name' => $olseraVariant['name'],
-                                'price' => $olseraVariant['sell_price'] ?? 0,
+                                'price' => $olseraVariant['market_price'] ?? 0,
                                 'sell_price' => $olseraVariant['sell_price'] ?? null,
                                 'buy_price' => $olseraVariant['buy_price'] ?? 0,
                                 'weight' => $olseraVariant['vweight'] ?? 0,
@@ -323,6 +323,10 @@ class SyncProcessor
             ],
         ];
 
+        if($variant->sell_price < $variant->price){
+            $data['sale_price'] = (string) $variant->sell_price;
+        }
+       
         return $data;
     }
 
