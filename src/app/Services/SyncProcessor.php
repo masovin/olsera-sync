@@ -306,10 +306,6 @@ class SyncProcessor
             ],
         ];
 
-        if (!empty($variant->images) && is_array($variant->images)) {
-            $data['image'] = ['src' => is_array($variant->images[0]) ? ($variant->images[0]['url'] ?? $variant->images[0]['src'] ?? '') : $variant->images[0]];
-        }
-
         return $data;
     }
 
