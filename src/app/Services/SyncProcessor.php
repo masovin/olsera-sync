@@ -41,7 +41,7 @@ class SyncProcessor
                     ['olsera_id' => $olseraProduct['id']],
                     [
                         'sku' => $olseraProduct['sku'] ?? null,
-                        'brand' => ucwords(strtolower($olseraProduct['klasifikasi'])) ?? null,
+                        'brand' => !empty($olseraProduct['klasifikasi']) ? ucwords(strtolower(trim($olseraProduct['klasifikasi']))) : null,
                         'name' => $olseraProduct['name'],
                         'barcode' => $olseraProduct['barcode'] ?? null,
                         'price' => $olseraProduct['selling_price'] ?? $olseraProduct['price'] ?? 0,
@@ -49,7 +49,11 @@ class SyncProcessor
                         'weight' => $olseraProduct['weight'] ?? 0,
                         'stock' => $olseraProduct['stock_quantity'] ?? $olseraProduct['stock'] ?? 0,
                         'description' => $olseraProduct['description'] ?? '',
-                        'images' => $olseraProduct['photo_md'] ?? [],
+                        'images' => array_values(array_unique(array_filter([
+                            $olseraProduct['photo_md'] ?? null,
+                            $olseraProduct['photo'] ?? null,
+                            $olseraProduct['photo_lg'] ?? null
+                        ]))),
                         'has_variants' => (bool) ($olseraProduct['has_variant'] ?? false),
                         'allow_decimal' => (bool) ($olseraProduct['allow_decimal'] ?? false),
                         'is_synced' => false,
@@ -70,7 +74,10 @@ class SyncProcessor
                                 'weight' => $olseraVariant['vweight'] ?? 0,
                                 'stock' => $olseraVariant['stock_qty'] ?? 0,
                                 'barcode' => $olseraVariant['variant_barcode'] ?? null,
-                                'images' => !empty($olseraVariant['photo_md']) ? [$olseraVariant['photo_md']] : null,
+                                'images' => array_values(array_unique(array_filter([
+                                    $olseraVariant['photo_md'] ?? null,
+                                    $olseraVariant['photo'] ?? null
+                                ]))),
                             ]
                         );
                     }
@@ -161,59 +168,65 @@ class SyncProcessor
             $failed = 0;
 
             foreach ($pendingProducts as $product) {
-                $isVariable = $product->has_variants;
-                $attributeSlug = $this->determineAttributeSlug($product);
-                
-                // 1. Map data
-                $wooData = $this->mapProductToWoo($product, $isVariable, $attributeSlug);
-
-                // 2. Check for existing mapping
-                $mapping = SyncMapping::where('olsera_id', $product->olsera_id)->first();
-                $wooId = null;
-
-                if ($mapping) {
-                    // Update existing
-                    $response = $this->woo->updateProduct($mapping->woocommerce_id, $wooData);
-                    if (!empty($response['id'])) {
-                        $wooId = $response['id'];
-                    }
-                } else {
-                    // Try to find by SKU first to avoid duplicates
-                    $existingWoo = $product->sku ? $this->woo->findProductBySku($product->sku) : null;
+                try {
+                    $isVariable = $product->has_variants;
+                    $attributeSlug = $this->determineAttributeSlug($product);
                     
-                    if ($existingWoo) {
-                        $response = $this->woo->updateProduct($existingWoo['id'], $wooData);
+                    // 1. Map data
+                    $wooData = $this->mapProductToWoo($product, $isVariable, $attributeSlug);
+
+                    // 2. Check for existing mapping
+                    $mapping = SyncMapping::where('olsera_id', $product->olsera_id)->first();
+                    $wooId = null;
+
+                    if ($mapping) {
+                        // Update existing
+                        $response = $this->woo->updateProduct($mapping->woocommerce_id, $wooData);
                         if (!empty($response['id'])) {
                             $wooId = $response['id'];
-                            SyncMapping::create([
-                                'olsera_id' => $product->olsera_id,
-                                'woocommerce_id' => $wooId
-                            ]);
                         }
                     } else {
-                        // Create new
-                        $response = $this->woo->createProduct($wooData);
-                        if (!empty($response['id'])) {
-                            $wooId = $response['id'];
-                            SyncMapping::create([
-                                'olsera_id' => $product->olsera_id,
-                                'woocommerce_id' => $wooId
-                            ]);
+                        // Try to find by SKU first to avoid duplicates
+                        $existingWoo = $product->sku ? $this->woo->findProductBySku($product->sku) : null;
+                        
+                        if ($existingWoo) {
+                            $response = $this->woo->updateProduct($existingWoo['id'], $wooData);
+                            if (!empty($response['id'])) {
+                                $wooId = $response['id'];
+                                SyncMapping::create([
+                                    'olsera_id' => $product->olsera_id,
+                                    'woocommerce_id' => $wooId
+                                ]);
+                            }
+                        } else {
+                            // Create new
+                            $response = $this->woo->createProduct($wooData);
+                            if (!empty($response['id'])) {
+                                $wooId = $response['id'];
+                                SyncMapping::create([
+                                    'olsera_id' => $product->olsera_id,
+                                    'woocommerce_id' => $wooId
+                                ]);
+                            }
                         }
                     }
-                }
 
-                if ($wooId) {
-                    // 3. Process Variations if applicable
-                    if ($isVariable) {
-                        $this->syncVariations($product, $wooId, $attributeSlug);
+                    if ($wooId) {
+                        // 3. Process Variations if applicable
+                        if ($isVariable) {
+                            $this->syncVariations($product, $wooId, $attributeSlug);
+                        }
+                        
+                        $product->update(['is_synced' => true]);
+                        $synced++;
+                    } else {
+                        $failed++;
+                        Log::warning("Failed to sync product SKU: {$product->sku}");
                     }
-                    
-                    $product->update(['is_synced' => true]);
-                    $synced++;
-                } else {
+                } catch (\Exception $e) {
                     $failed++;
-                    Log::warning("Failed to sync product SKU: {$product->sku}");
+                    Log::error("Failed to dispatch product ID {$product->id}: " . $e->getMessage());
+                    // Continue to next product
                 }
             }
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class WooCommerceClient
 {
@@ -93,33 +94,59 @@ class WooCommerceClient
     {
         $url = $this->storeUrl . '/wp-json/wc/v3' . $endpoint;
 
-        // Force consumer_key and consumer_secret into query params for higher compatibility
-        $query = $method === 'GET' ? $data : [];
-        $query['consumer_key'] = $this->consumerKey;
-        $query['consumer_secret'] = $this->consumerSecret;
-
-        $response = Http::timeout(60)
+        $pendingRequest = Http::timeout(60)
             ->connectTimeout(30)
             ->withUserAgent('WooCommerce API Client')
-            ->retry(3, 100, function ($exception, $request) {
-                return $exception instanceof \Illuminate\Http\Client\ConnectionException 
-                    || ($exception instanceof \Illuminate\Http\Client\ResponseException && in_array($exception->getCode(), [429, 503]));
-            })
+            ->withBasicAuth($this->consumerKey, $this->consumerSecret)
             ->withHeaders([
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ])
-            ->send($method, $url, [
-                'query' => $query,
-                'json' => $method !== 'GET' ? $data : [],
-            ]);
+            ->retry(3, 100, function ($exception, $request) {
+                return $exception instanceof \Illuminate\Http\Client\ConnectionException 
+                    || ($exception instanceof \Illuminate\Http\Client\ResponseException && in_array($exception->getCode(), [429, 503]));
+            });
+
+        $method = strtoupper($method);
+        
+        if ($method === 'GET') {
+            $response = $pendingRequest->get($url, $data);
+        } else {
+            $response = $pendingRequest->send($method, $url, ['json' => $data]);
+        }
+
+        $jsonResponse = $response->json();
+
+        // Log raw response for debugging with request context
+        if (method_exists($this, 'logRawResponse')) {
+            $this->logRawResponse($method, $endpoint, $data, $jsonResponse);
+        }
 
         if ($response->failed()) {
             $excerpt = substr($response->body(), 0, 500);
             Log::error("WooCommerce API Error ({$endpoint}) [Status: {$response->status()}]: {$excerpt}");
-            return [];
+            return $jsonResponse ?: [];
         }
 
-        return $response->json();
+        return $jsonResponse;
+    }
+
+    /**
+     * Save raw JSON response to storage/woocommerce.
+     */
+    protected function logRawResponse(string $method, string $endpoint, array $requestData, array $responseData): void
+    {
+        $endpointName = str_replace(['/', '\\'], '_', trim($endpoint, '/'));
+        $timestamp = now()->format('Y-m-d_H-i-s') . '_' . substr(explode(' ', microtime())[0], 2, 6);
+        $filename = "woocommerce/{$endpointName}_{$method}_{$timestamp}.json";
+        
+        $logData = [
+            'method' => $method,
+            'endpoint' => $endpoint,
+            'request' => $requestData,
+            'response' => $responseData,
+        ];
+
+        Storage::disk('local')->put($filename, json_encode($logData, JSON_PRETTY_PRINT));
     }
 }
