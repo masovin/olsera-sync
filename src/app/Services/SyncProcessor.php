@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\SyncMapping;
 use App\Models\SyncLog;
+use App\Models\Brand;
 use Illuminate\Support\Facades\Log;
 
 class SyncProcessor
@@ -270,6 +271,20 @@ class SyncProcessor
             $images = array_filter($product->images);
             if (!empty($images)) {
                 $data['images'] = array_map(fn($url) => ['src' => $url], array_values($images));
+            }
+        }
+
+        // Resolve Brand ID from name
+        if (!empty($product->brand)) {
+            $brandName = trim($product->brand);
+            $brand = Brand::where('name', 'LIKE', $brandName)->first();
+
+            if ($brand) {
+                $data['brands'] = [(int) $brand->woocommerce_id];
+                // Some plugins use product_brand as a taxonomy ID in category-like structure
+                $data['product_brand'] = [(int) $brand->woocommerce_id];
+            } else {
+                Log::warning("Brand '{$brandName}' not found in local brands table for product SKU: {$product->sku}");
             }
         }
 

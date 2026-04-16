@@ -1,0 +1,139 @@
+{
+    "id": 30818,
+    "name": "NIKE BASKETBALL LIFESTYLE SHOES AIR JORDAN 1 LOW SE BLACK TOE MENS (IB8971 106)",
+    "slug": "nike-basketball-lifestyle-shoes-air-jordan-1-low-se-black-toe-mens-ib8971-106",
+    "permalink": "https:\/\/fourkicks.id\/product\/nike-basketball-lifestyle-shoes-air-jordan-1-low-se-black-toe-mens-ib8971-106\/",
+    "date_created": "2026-04-16T04:39:06",
+    "date_created_gmt": "2026-04-16T04:39:06",
+    "date_modified": "2026-04-16T05:37:54",
+    "date_modified_gmt": "2026-04-16T05:37:54",
+    "type": "variable",
+    "status": "publish",
+    "featured": false,
+    "catalog_visibility": "visible",
+    "description": "",
+    "short_description": "",
+    "sku": "",
+    "price": "1799000.00",
+    "regular_price": "",
+    "sale_price": "",
+    "date_on_sale_from": null,
+    "date_on_sale_from_gmt": null,
+    "date_on_sale_to": null,
+    "date_on_sale_to_gmt": null,
+    "on_sale": false,
+    "purchasable": true,
+    "total_sales": 0,
+    "virtual": false,
+    "downloadable": false,
+    "downloads": [],
+    "download_limit": -1,
+    "download_expiry": -1,
+    "external_url": "",
+    "button_text": "",
+    "tax_status": "taxable",
+    "tax_class": "",
+    "manage_stock": false,
+    "stock_quantity": null,
+    "backorders": "no",
+    "backorders_allowed": false,
+    "backordered": false,
+    "low_stock_amount": null,
+    "sold_individually": false,
+    "weight": "",
+    "dimensions": {
+        "length": "",
+        "width": "",
+        "height": ""
+    },
+    "shipping_required": true,
+    "shipping_taxable": true,
+    "shipping_class": "",
+    "shipping_class_id": 0,
+    "reviews_allowed": true,
+    "average_rating": "0.00",
+    "rating_count": 0,
+    "upsell_ids": [],
+    "cross_sell_ids": [],
+    "parent_id": 0,
+    "purchase_note": "",
+    "categories": [
+        {
+            "id": 23,
+            "name": "Footwear",
+            "slug": "footwear"
+        }
+    ],
+    "brands": [],
+    "tags": [],
+    "images": [
+        {
+            "id": 30817,
+            "date_created": "2026-04-16T04:39:05",
+            "date_created_gmt": "2026-04-16T04:39:05",
+            "date_modified": "2026-04-16T04:39:06",
+            "date_modified_gmt": "2026-04-16T04:39:06",
+            "src": "https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160.jpg",
+            "name": "md_69dfaf68ba160.jpg",
+            "alt": "",
+            "srcset": "https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160.jpg 480w, https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160-300x300.jpg 300w, https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160-150x150.jpg 150w, https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160-430x430.jpg 430w",
+            "sizes": "(max-width: 480px) 100vw, 480px",
+            "thumbnail": "https:\/\/fourkicks.id\/wp-content\/uploads\/2026\/04\/md_69dfaf68ba160-430x430.jpg"
+        }
+    ],
+    "attributes": [
+        {
+            "id": 2,
+            "name": "Size",
+            "slug": "pa_size",
+            "position": 0,
+            "visible": true,
+            "variation": true,
+            "options": [
+                "41",
+                "42"
+            ]
+        }
+    ],
+    "default_attributes": [],
+    "variations": [
+        30820,
+        30822
+    ],
+    "grouped_products": [],
+    "menu_order": 0,
+    "price_html": "<span class=\"woocommerce-Price-amount amount\"><bdi><span class=\"woocommerce-Price-currencySymbol\">Rp<\/span>1.799.000<\/bdi><\/span>",
+    "related_ids": [
+        29973,
+        29985,
+        29794,
+        29849,
+        29915
+    ],
+    "meta_data": [],
+    "stock_status": "instock",
+    "has_options": true,
+    "post_password": "",
+    "global_unique_id": "",
+    "_links": {
+        "self": [
+            {
+                "href": "https:\/\/fourkicks.id\/wp-json\/wc\/v3\/products\/30818",
+                "targetHints": {
+                    "allow": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE"
+                    ]
+                }
+            }
+        ],
+        "collection": [
+            {
+                "href": "https:\/\/fourkicks.id\/wp-json\/wc\/v3\/products"
+            }
+        ]
+    }
+}
